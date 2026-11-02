@@ -591,13 +591,21 @@ window.__ModuleLoader__.load({
         if (!view.svg) return;
         const nw = Math.max(1, Math.round(view.natural.w));
         const nh = Math.max(1, Math.round(view.natural.h));
-        view.svg.style.maxWidth = 'none';
-        view.svg.style.width = nw + 'px';
-        view.svg.style.height = nh + 'px';
-        view.svg.setAttribute('width', String(nw));
-        view.svg.setAttribute('height', String(nh));
+        // Only touch width/height when the base size changes; pan/zoom then
+        // only update the compositor transform (no layout/reflow => smooth).
+        const ws = String(nw);
+        const hs = String(nh);
+        if (view.svg.getAttribute('width') !== ws) {
+          view.svg.setAttribute('width', ws);
+          view.svg.style.width = nw + 'px';
+          view.svg.style.maxWidth = 'none';
+        }
+        if (view.svg.getAttribute('height') !== hs) {
+          view.svg.setAttribute('height', hs);
+          view.svg.style.height = nh + 'px';
+        }
         canvas.style.transform =
-          'translate(' + view.panX + 'px, ' + view.panY + 'px) scale(' + view.scale + ')';
+          'translate3d(' + view.panX + 'px,' + view.panY + 'px,0) scale(' + view.scale + ')';
         zoomPct.textContent = Math.round(view.scale * 100) + '%';
       }
       function fit(freeze) {
@@ -775,17 +783,52 @@ window.__ModuleLoader__.load({
       let scanTimer = 0;
       let themeTimer = 0;
       let uid = 0;
+      let lastFsChange = 0;
 
       // Clear any error graphics a previous (buggy) instance left behind.
       cleanupStrayErrors();
 
       function onResize() {
         if (disposed) return;
+        // Ignore resize churn during a fullscreen enter/exit transition.
+        if (Date.now() - lastFsChange < 500) return;
         window.requestAnimationFrame(() => {
           for (const rec of records.values()) {
             if (rec.phase === 'done' && rec.view && rec.view.fitMode && rec.fit) rec.fit(true);
           }
         });
+      }
+
+      // Fullscreen is isolated: snapshot the non-fullscreen view on entry and
+      // restore it verbatim on exit, so zoom/pan inside fullscreen never
+      // changes how the diagram looks in the chat.
+      function onFullscreenChange() {
+        if (disposed) return;
+        lastFsChange = Date.now();
+        const fsEl = document.fullscreenElement;
+        for (const rec of records.values()) {
+          if (rec.phase !== 'done' || !rec.view || !rec.apply) continue;
+          if (fsEl === rec.figure) {
+            if (!rec.saved) {
+              rec.saved = {
+                scale: rec.view.scale,
+                panX: rec.view.panX,
+                panY: rec.view.panY,
+                fitMode: rec.view.fitMode,
+              };
+            }
+            window.requestAnimationFrame(() => {
+              if (!disposed && document.fullscreenElement === rec.figure && rec.fit) rec.fit(false);
+            });
+          } else if (rec.saved) {
+            rec.view.scale = rec.saved.scale;
+            rec.view.panX = rec.saved.panX;
+            rec.view.panY = rec.saved.panY;
+            rec.view.fitMode = rec.saved.fitMode;
+            rec.saved = null;
+            rec.apply();
+          }
+        }
       }
 
       async function renderInto(rec, code) {
@@ -980,7 +1023,7 @@ window.__ModuleLoader__.load({
         media = null;
       }
       window.addEventListener('resize', onResize);
-      document.addEventListener('fullscreenchange', onResize);
+      document.addEventListener('fullscreenchange', onFullscreenChange);
 
       scheduleScan();
 
@@ -993,7 +1036,7 @@ window.__ModuleLoader__.load({
           themeObserver.disconnect();
           if (media && media.removeEventListener) media.removeEventListener('change', scheduleThemeRerender);
           window.removeEventListener('resize', onResize);
-          document.removeEventListener('fullscreenchange', onResize);
+          document.removeEventListener('fullscreenchange', onFullscreenChange);
           for (const [block, rec] of records) {
             if (rec.figure) rec.figure.remove();
             if (block.isConnected) {
