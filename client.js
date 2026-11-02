@@ -43,10 +43,10 @@ window.__ModuleLoader__.load({
       '.dsh-mermaid-zoom{min-width:42px;text-align:center;font-size:12px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;user-select:none}',
       '.dsh-mermaid-toast{font-size:11px;color:var(--dsw-alias-label-secondary);opacity:0;transition:opacity .16s ease;margin-right:2px;white-space:nowrap;pointer-events:none}',
       '.dsh-mermaid-toast.show{opacity:1}',
-      '.dsh-mermaid-stage{max-height:min(68vh,640px);overflow:auto;padding:12px;background:var(--dsw-alias-bg-base);min-height:48px;box-sizing:border-box;display:flex;cursor:default;user-select:none;-webkit-user-select:none}',
+      '.dsh-mermaid-stage{position:relative;max-height:min(68vh,640px);overflow:hidden;background:var(--dsw-alias-bg-base);min-height:48px;box-sizing:border-box;cursor:default;user-select:none;-webkit-user-select:none}',
       '.dsh-mermaid-figure:fullscreen .dsh-mermaid-stage{cursor:grab}',
       '.dsh-mermaid-figure:fullscreen .dsh-mermaid-stage.dsh-mermaid-dragging{cursor:grabbing}',
-      '.dsh-mermaid-canvas{display:block;width:max-content;margin:auto}',
+      '.dsh-mermaid-canvas{position:absolute;left:0;top:0;width:max-content;transform-origin:0 0;will-change:transform}',
       '.dsh-mermaid-canvas svg{display:block}',
       '.dsh-mermaid-status{color:var(--dsw-alias-label-secondary);font-size:12px;padding:6px 2px;white-space:nowrap}',
       '.dsh-mermaid-source{margin:0;padding:12px 14px;overflow:auto;max-height:min(68vh,640px);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:var(--dsh-code-font-size,12px);line-height:1.5;white-space:pre}',
@@ -577,7 +577,7 @@ window.__ModuleLoader__.load({
       srcCode.textContent = code;
       source.appendChild(srcCode);
 
-      const view = { svg: null, natural: { w: 800, h: 600 }, scale: 1, fitMode: true };
+      const view = { svg: null, natural: { w: 800, h: 600 }, scale: 1, fitMode: true, panX: 0, panY: 0 };
       let toastTimer = 0;
       function showToast(msg) {
         toast.textContent = msg;
@@ -585,67 +585,71 @@ window.__ModuleLoader__.load({
         if (toastTimer) window.clearTimeout(toastTimer);
         toastTimer = window.setTimeout(() => toast.classList.remove('show'), 1800);
       }
+      // Paint the base-size SVG and place it with a translate/scale transform,
+      // so panning and zooming never fight a scroll container.
       function apply() {
         if (!view.svg) return;
-        const w = Math.max(1, Math.round(view.natural.w * view.scale));
-        const h = Math.max(1, Math.round(view.natural.h * view.scale));
+        const nw = Math.max(1, Math.round(view.natural.w));
+        const nh = Math.max(1, Math.round(view.natural.h));
         view.svg.style.maxWidth = 'none';
-        view.svg.style.width = w + 'px';
-        view.svg.style.height = h + 'px';
-        view.svg.setAttribute('width', String(w));
-        view.svg.setAttribute('height', String(h));
+        view.svg.style.width = nw + 'px';
+        view.svg.style.height = nh + 'px';
+        view.svg.setAttribute('width', String(nw));
+        view.svg.setAttribute('height', String(nh));
+        canvas.style.transform =
+          'translate(' + view.panX + 'px, ' + view.panY + 'px) scale(' + view.scale + ')';
         zoomPct.textContent = Math.round(view.scale * 100) + '%';
       }
       function fit(freeze) {
         if (!view.svg) return;
+        const fullscreen = document.fullscreenElement === figure;
+        const capH = fullscreen
+          ? Math.max(160, window.innerHeight - 96)
+          : Math.max(160, Math.min(window.innerHeight * MAX_STAGE_VH, MAX_STAGE_PX));
         let availW = 80;
         try {
           availW = Math.max(80, stage.clientWidth - PAD);
         } catch (e) {
           availW = 80;
         }
-        const fullscreen = document.fullscreenElement === figure;
-        const capH = fullscreen
-          ? Math.max(160, window.innerHeight - 96)
-          : Math.max(160, Math.min(window.innerHeight * MAX_STAGE_VH, MAX_STAGE_PX));
         const availH = Math.max(80, capH - PAD);
         const s = Math.min(availW / view.natural.w, availH / view.natural.h, 1);
         view.scale = clamp(s, 0.06, 1);
         view.fitMode = true;
-        apply();
-        // Freeze the stage height once, so zoom/fit only scale the diagram
+        // Freeze the stage height once so zoom/fit only scale the diagram
         // inside a fixed canvas instead of resizing the box in the chat.
         if (freeze && !fullscreen) {
-          // border-box height: diagram height + vertical padding.
           const targetH = Math.round(clamp(view.natural.h * view.scale + PAD, 64, capH));
           stage.style.height = targetH + 'px';
         }
-        stage.scrollTop = 0;
-        stage.scrollLeft = 0;
+        const sw = stage.clientWidth || availW + PAD;
+        const sh = stage.clientHeight || availH + PAD;
+        view.panX = (sw - view.natural.w * view.scale) / 2;
+        view.panY = (sh - view.natural.h * view.scale) / 2;
+        apply();
       }
       function zoomBy(factor) {
         if (!view.svg) return;
-        view.scale = clamp((view.scale || 1) * factor, 0.15, 6);
-        view.fitMode = false;
-        apply();
+        const rect = stage.getBoundingClientRect();
+        zoomAnchored((view.scale || 1) * factor, rect.left + rect.width / 2, rect.top + rect.height / 2);
       }
       // Zoom while keeping the point under the cursor fixed.
       function zoomAnchored(next, clientX, clientY) {
         if (!view.svg) return;
-        const prev = view.scale || 1;
         const rect = stage.getBoundingClientRect();
-        const innerX = clientX - rect.left + stage.scrollLeft;
-        const innerY = clientY - rect.top + stage.scrollTop;
-        view.scale = clamp(next, 0.15, 6);
+        const cx = clientX - rect.left;
+        const cy = clientY - rect.top;
+        const prev = view.scale || 1;
+        const ns = clamp(next, 0.15, 6);
+        view.panX = cx - (cx - view.panX) * (ns / prev);
+        view.panY = cy - (cy - view.panY) * (ns / prev);
+        view.scale = ns;
         view.fitMode = false;
         apply();
-        const ratio = view.scale / prev;
-        stage.scrollLeft = innerX * ratio - (clientX - rect.left);
-        stage.scrollTop = innerY * ratio - (clientY - rect.top);
       }
 
-      // Fullscreen: wheel zooms, left-drag pans. Outside fullscreen the wheel
-      // is left alone so the chat keeps scrolling normally.
+      // Fullscreen: wheel zooms, left-drag pans freely. Outside fullscreen the
+      // wheel is left alone so the chat keeps scrolling normally.
       stage.addEventListener(
         'wheel',
         (ev) => {
@@ -661,7 +665,7 @@ window.__ModuleLoader__.load({
       stage.addEventListener('pointerdown', (ev) => {
         if (ev.button !== 0 || !view.svg) return;
         if (document.fullscreenElement !== figure && view.fitMode) return;
-        drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, left: stage.scrollLeft, top: stage.scrollTop };
+        drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, panX: view.panX, panY: view.panY };
         try {
           stage.setPointerCapture(ev.pointerId);
         } catch (e) {
@@ -672,8 +676,10 @@ window.__ModuleLoader__.load({
       });
       stage.addEventListener('pointermove', (ev) => {
         if (!drag || ev.pointerId !== drag.id) return;
-        stage.scrollLeft = drag.left - (ev.clientX - drag.x);
-        stage.scrollTop = drag.top - (ev.clientY - drag.y);
+        view.panX = drag.panX + (ev.clientX - drag.x);
+        view.panY = drag.panY + (ev.clientY - drag.y);
+        view.fitMode = false;
+        apply();
       });
       function endDrag(ev) {
         if (!drag) return;

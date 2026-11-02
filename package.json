@@ -1,6 +1,6 @@
 {
   "name": "dsh-flowchart",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Render Mermaid code blocks in DeepSeek Harness as interactive diagrams: zoom, fit, copy as PNG, download SVG, fullscreen and source toggle.",
   "license": "MIT",
   "type": "module",
