@@ -1,0 +1,50 @@
+{
+  "name": "dsh-flowchart",
+  "version": "1.0.0",
+  "description": "Render Mermaid code blocks in DeepSeek Harness as interactive diagrams: zoom, fit, copy as PNG, download SVG, fullscreen and source toggle.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "client.mermaid.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jesongit/dsh-flowchart.git"
+  },
+  "homepage": "https://github.com/jesongit/dsh-flowchart#readme",
+  "bugs": "https://github.com/jesongit/dsh-flowchart/issues",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "mermaid",
+    "diagram",
+    "flowchart"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  }
+}

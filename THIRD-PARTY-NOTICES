@@ -1,0 +1,12 @@
+THIRD-PARTY NOTICES
+
+This package bundles Mermaid (https://github.com/mermaid-js/mermaid)
+version 11.17.2 in the file client.mermaid.js.
+
+Mermaid is licensed under the MIT License.
+Copyright (c) 2014-2024 Knut Sveidqvist and Mermaid contributors.
+
+Mermaid itself bundles a number of third-party libraries (for example d3,
+dagre, cytoscape, katex, khroma, roughjs and others). Their license texts are
+embedded inside the bundled file client.mermaid.js and remain subject to their
+respective licenses.
